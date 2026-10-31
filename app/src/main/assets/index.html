@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>FNF Music Studio</title>
+<style>
+:root{--bg:#0d101f;--panel:#171c31;--panel2:#202744;--line:#343d60;--cyan:#46e6dc;--pink:#ff5e9c;--text:#f3f5ff;--muted:#aab2d0}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,Arial;user-select:none}
+header{padding:17px 16px 12px;background:#11162a;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:3}
+.brand{font-size:21px;font-weight:900;letter-spacing:.3px}.brand span{color:var(--cyan)}.sub{font-size:12px;color:var(--muted);margin-top:3px}
+main{padding:13px;max-width:760px;margin:auto}.panel{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:13px;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.between{justify-content:space-between}.label{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.7px;margin-bottom:9px}
+button,select,input{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px}
+button{font-weight:700;cursor:pointer}button.primary{background:var(--cyan);color:#07151b;border:0}button.danger{border-color:#a83b67;color:#ff8bb4}
+button:active{transform:scale(.98)}.small{padding:8px 11px;font-size:13px}
+input[type=number]{width:75px}select{max-width:100%}
+.stat{background:#11162a;border-radius:10px;padding:8px 10px;min-width:75px}.stat b{font-size:18px}.stat small{display:block;color:var(--muted);font-size:10px}
+.gridwrap{overflow-x:auto;padding-bottom:5px}.piano{display:grid;grid-template-columns:38px repeat(16,minmax(24px,1fr));gap:3px;min-width:490px}
+.pitch{height:27px;font-size:10px;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.cell{height:27px;border:1px solid #303957;border-radius:4px;background:#11162a;padding:0}
+.cell.beat{border-left:2px solid #657096}.cell.on{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 8px #46e6dc55}
+.cell.on.alt{background:var(--pink);border-color:var(--pink)}
+.stephead{font-size:10px;color:var(--muted);text-align:center;padding:4px 0}
+.track{display:flex;gap:7px;flex-wrap:wrap}.track button.active{background:var(--pink);border-color:var(--pink);color:#1b0812}
+.help{font-size:12px;color:var(--muted);line-height:1.45}.footer{text-align:center;color:#7f89ad;font-size:11px;padding:8px}
+input[type=range]{padding:0;accent-color:var(--cyan);width:120px}
+@media(min-width:600px){main{padding:20px}.piano{grid-template-columns:48px repeat(16,minmax(28px,1fr))}.cell,.pitch{height:32px}}
+</style></head>
+<body>
+<header><div class="brand">FNF <span>MUSIC STUDIO</span></div><div class="sub">Простой музыкальный редактор для Friday Night Funkin'</div></header>
+<main>
+<section class="panel">
+ <div class="row between">
+  <div class="stat"><small>ТЕМП</small><b id="bpmView">120</b></div>
+  <div class="row"><button class="small" id="minus">−</button><input id="bpm" type="number" min="60" max="240" value="120"><button class="small" id="plus">+</button></div>
+  <button class="primary" id="play">▶ Играть</button><button id="stop">■</button>
+ </div>
+ <div class="row" style="margin-top:12px"><label class="help">Громкость</label><input id="volume" type="range" min="0" max="100" value="70"><span id="volView" class="help">70%</span></div>
+</section>
+<section class="panel">
+ <div class="label">Инструмент</div>
+ <div class="track" id="tracks">
+  <button class="active" data-track="0">Lead</button><button data-track="1">Bass</button><button data-track="2">Keys</button><button data-track="3">Drums</button>
+ </div>
+ <p class="help">Выбери инструмент и нажимай на клетки, чтобы добавлять или убирать ноты.</p>
+</section>
+<section class="panel">
+ <div class="row between"><div class="label" style="margin:0">Piano Roll · 1 такт</div><button class="small" id="clear">Очистить дорожку</button></div>
+ <div class="gridwrap"><div class="piano" id="piano"></div></div>
+ <div class="row between" style="margin-top:12px"><span class="help">Ноты: C5–C4 · 16 шагов</span><button class="small" id="clearAll">Очистить всё</button></div>
+</section>
+<section class="panel">
+ <div class="label">Проект и экспорт</div>
+ <div class="row"><button class="primary" id="export">↓ Экспорт WAV</button><button id="save">Сохранить проект</button><button id="load">Открыть проект</button></div>
+ <p class="help" id="status">Проект хранится на устройстве. WAV можно использовать как основу для песни FNF.</p>
+ <input type="file" id="file" accept=".json,application/json" hidden>
+</section>
+<div class="footer">FNF Music Studio · Версия 1.0 · Работает офлайн</div>
+</main>
+<script>
+const rows=13,steps=16, names=['C5','B4','A#4','A4','G#4','G4','F#4','F4','E4','D#4','D4','C#4','C4'];
+let data=Array.from({length:4},()=>Array.from({length:rows},()=>Array(steps).fill(false)));
+let selected=0, audio=null, timer=null, stepNow=0;
+const piano=document.getElementById('piano');
+function draw(){
+ piano.innerHTML='';
+ piano.appendChild(document.createElement('div'));
+ for(let s=0;s<steps;s++){let h=document.createElement('div');h.className='stephead';h.textContent=s%4===0?(s/4+1):'·';piano.appendChild(h)}
+ for(let r=0;r<rows;r++){
+  let p=document.createElement('div');p.className='pitch';p.textContent=names[r];piano.appendChild(p);
+  for(let s=0;s<steps;s++){let b=document.createElement('button');b.className='cell'+(s%4===0?' beat':'')+(data[selected][r][s]?' on'+(selected%2?' alt':''):'');b.setAttribute('aria-label',names[r]+' шаг '+(s+1));b.onclick=()=>{data[selected][r][s]=!data[selected][r][s];draw()};piano.appendChild(b)}
+ }
+}
+draw();
+document.querySelectorAll('[data-track]').forEach(b=>b.onclick=()=>{selected=+b.dataset.track;document.querySelectorAll('[data-track]').forEach(x=>x.classList.toggle('active',x===b));draw()});
+const bpm=document.getElementById('bpm');
+function setBpm(v){v=Math.max(60,Math.min(240,Math.round(v)||120));bpm.value=v;document.getElementById('bpmView').textContent=v}
+bpm.onchange=()=>setBpm(bpm.value);document.getElementById('minus').onclick=()=>setBpm(+bpm.value-5);document.getElementById('plus').onclick=()=>setBpm(+bpm.value+5);
+document.getElementById('volume').oninput=e=>document.getElementById('volView').textContent=e.target.value+'%';
+function ctx(){if(!audio)audio=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();return audio}
+function note(freq,time,dur,type='sine',vol=.15){let c=ctx(),o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(0.0001,time);g.gain.exponentialRampToValueAtTime(vol*(+document.getElementById('volume').value/70),time+.012);g.gain.exponentialRampToValueAtTime(.0001,time+dur);o.connect(g);g.connect(c.destination);o.start(time);o.stop(time+dur+.03)}
+function freq(row){return 523.25*Math.pow(2,-row/12)}
+function hit(track,row,t){
+ if(track===3){let c=ctx(),o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(row===12?100:row===8?180:500,t);o.frequency.exponentialRampToValueAtTime(35,t+.12);g.gain.setValueAtTime(.22,t);g.gain.exponentialRampToValueAtTime(.001,t+.14);o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+.15);return}
+ let f=freq(row)*(track===1?.5:1);note(f,t,track===1?.22:.16,track===0?'sawtooth':track===1?'triangle':'sine',track===0?.10:track===1?.18:.12);
+}
+function playStep(s,t){for(let tr=0;tr<4;tr++)for(let r=0;r<rows;r++)if(data[tr][r][s])hit(tr,r,t)}
+function stop(){if(timer){clearInterval(timer);timer=null}document.getElementById('play').textContent='▶ Играть'}
+document.getElementById('play').onclick=()=>{if(timer){stop();return}ctx();stepNow=0;let interval=60000/(+bpm.value)/4;playStep(0,ctx().currentTime+.03);stepNow=1;timer=setInterval(()=>{playStep(stepNow,ctx().currentTime+.02);stepNow=(stepNow+1)%16},interval);document.getElementById('play').textContent='Ⅱ Пауза'};
+document.getElementById('stop').onclick=stop;
+document.getElementById('clear').onclick=()=>{data[selected]=Array.from({length:rows},()=>Array(steps).fill(false));draw()};
+document.getElementById('clearAll').onclick=()=>{data=Array.from({length:4},()=>Array.from({length:rows},()=>Array(steps).fill(false)));draw()};
+function project(){return {app:'FNF Music Studio',version:1,bpm:+bpm.value,data}}
+document.getElementById('save').onclick=()=>{let blob=new Blob([JSON.stringify(project())],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fnf-project.json';a.click();URL.revokeObjectURL(a.href);status('Проект сохранён в файл.')};
+const file=document.getElementById('file');document.getElementById('load').onclick=()=>file.click();
+file.onchange=async()=>{try{let p=JSON.parse(await file.files[0].text());if(!p.data||p.data.length!==4)throw 0;data=p.data;setBpm(p.bpm);draw();status('Проект открыт.')}catch(e){status('Не удалось открыть этот проект.')}};
+function status(t){document.getElementById('status').textContent=t}
+document.getElementById('export').onclick=async()=>{
+ stop();status('Создаю WAV…');let sr=44100,bars=4,seconds=60/(+bpm.value)*4*bars,off=new OfflineAudioContext(1,Math.ceil(sr*seconds),sr),master=off.createGain();master.gain.value=.22*(+document.getElementById('volume').value/70);master.connect(off.destination);
+ for(let bar=0;bar<bars;bar++)for(let s=0;s<16;s++)for(let tr=0;tr<4;tr++)for(let r=0;r<rows;r++)if(data[tr][r][s]){
+  let t=(bar*16+s)*(60/(+bpm.value)/4),dur=.17;
+  if(tr===3){let o=off.createOscillator(),g=off.createGain();o.type='sine';o.frequency.setValueAtTime(r===12?100:r===8?180:500,t);o.frequency.exponentialRampToValueAtTime(35,t+.12);g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.14);o.connect(g);g.connect(master);o.start(t);o.stop(t+.15)}
+  else{let o=off.createOscillator(),g=off.createGain();o.type=tr===0?'sawtooth':tr===1?'triangle':'sine';o.frequency.value=523.25*Math.pow(2,-r/12)*(tr===1?.5:1);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(tr===1?.17:.11,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.02)}
+ }
+ try{let buf=await off.startRendering(),ch=buf.getChannelData(0),ab=new ArrayBuffer(44+ch.length*2),v=new DataView(ab);function str(o,s){for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))}str(0,'RIFF');v.setUint32(4,36+ch.length*2,true);str(8,'WAVE');str(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);str(36,'data');v.setUint32(40,ch.length*2,true);for(let i=0;i<ch.length;i++){let x=Math.max(-1,Math.min(1,ch[i]));v.setInt16(44+i*2,x<0?x*32768:x*32767,true)}let blob=new Blob([ab],{type:'audio/wav'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fnf-track.wav';a.click();URL.revokeObjectURL(a.href);status('Готово! WAV экспортирован.')}catch(e){status('Не удалось создать WAV на этом устройстве.')}
+};
+</script></body></html>
